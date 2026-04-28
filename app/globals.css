@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+/* Class-based dark mode for next-themes */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* Map semantic CSS tokens → Tailwind utilities */
+  --color-bg:               var(--bg);
+  --color-bg-subtle:        var(--bg-subtle);
+  --color-surface:          var(--surface);
+  --color-surface-hover:    var(--surface-hover);
+  --color-border:           var(--border);
+  --color-border-strong:    var(--border-strong);
+  --color-fg:               var(--fg);
+  --color-fg-muted:         var(--fg-muted);
+  --color-fg-subtle:        var(--fg-subtle);
+  --color-gold:             var(--gold);
+  --color-silver:           var(--silver);
+  --color-up:               var(--up);
+  --color-down:             var(--down);
+  --color-ring:             var(--ring);
+}
+
+/* ── Light Mode ─────────────────────────────────────────── */
+:root {
+  --bg:             #ffffff;
+  --bg-subtle:      #f9fafb;
+  --surface:        #ffffff;
+  --surface-hover:  #f3f4f6;
+  --border:         #e5e7eb;
+  --border-strong:  #d1d5db;
+  --fg:             #0a0a0a;
+  --fg-muted:       #374151;
+  --fg-subtle:      #9ca3af;
+  --gold:           #b45309;
+  --silver:         #4b5563;
+  --up:             #15803d;
+  --down:           #dc2626;
+  --ring:           #d97706;
+}
+
+/* ── Dark Mode ──────────────────────────────────────────── */
+.dark {
+  --bg:             #0a0a0a;
+  --bg-subtle:      #111111;
+  --surface:        #141414;
+  --surface-hover:  #1c1c1c;
+  --border:         #242424;
+  --border-strong:  #333333;
+  --fg:             #fafafa;
+  --fg-muted:       #a3a3a3;
+  --fg-subtle:      #525252;
+  --gold:           #f59e0b;
+  --silver:         #9ca3af;
+  --up:             #22c55e;
+  --down:           #f87171;
+  --ring:           #f59e0b;
+}
+
+html {
+  overflow-y: scroll;
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-geist-sans, system-ui, sans-serif);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Subtle background texture */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: radial-gradient(ellipse 80% 50% at 50% -10%, oklch(0.7 0.1 80 / 0.06) 0%, transparent 70%);
+}
+.dark body::before {
+  background-image: radial-gradient(ellipse 80% 50% at 50% -10%, oklch(0.6 0.15 80 / 0.08) 0%, transparent 70%);
+}
+
+/* Focus ring */
+*:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar        { width: 5px; height: 5px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: var(--border-strong); border-radius: 99px; }
