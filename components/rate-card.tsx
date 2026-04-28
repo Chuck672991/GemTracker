@@ -1,44 +1,173 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { formatPrice, formatRate, formatChange } from '@/lib/utils';
-import { cn } from '@/lib/utils';
+import { formatPrice, formatRate } from '@/lib/utils';
 import type { MetalRate, CurrencyRate } from '@/lib/types';
 import type { BaseCurrency } from '@/store/rates';
 
-export const cardVariants = {
-  hidden: { opacity: 0, y: 12 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.35, delay: i * 0.04, ease: 'easeOut' as const },
-  }),
-};
-
-const METAL_STYLE: Record<string, { icon: string; glow: string; badge: string }> = {
+/* ─────────────────────────────────────────────────────────────
+   Per-metal gradient themes – gradient + gloss shine overlay
+   ───────────────────────────────────────────────────────────── */
+const METAL_THEMES = {
   XAU_24K: {
-    icon: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/20',
-    glow: 'hover:shadow-amber-500/5 hover:ring-amber-500/20',
-    badge: 'Au 24K',
+    gradient:
+      'radial-gradient(ellipse at 40% 60%, #C8FF00 0%, #52B814 32%, #1B6B24 62%, #0A3D15 100%)',
+    shine:
+      'radial-gradient(circle at 28% 26%, rgba(255,255,255,0.34) 0%, rgba(255,255,255,0.07) 42%, transparent 66%)',
   },
   XAU_22K: {
-    icon: 'bg-amber-500/8 text-amber-600/90 dark:text-amber-500 ring-1 ring-amber-500/15',
-    glow: 'hover:shadow-amber-500/5 hover:ring-amber-500/15',
-    badge: 'Au 22K',
+    gradient:
+      'radial-gradient(ellipse at 40% 60%, #FFE050 0%, #D49210 32%, #8B6000 62%, #4A3300 100%)',
+    shine:
+      'radial-gradient(circle at 28% 26%, rgba(255,255,230,0.38) 0%, rgba(255,210,40,0.07) 42%, transparent 66%)',
   },
   XAU_18K: {
-    icon: 'bg-amber-600/8 text-amber-700/90 dark:text-amber-600 ring-1 ring-amber-600/15',
-    glow: 'hover:shadow-amber-600/5 hover:ring-amber-600/15',
-    badge: 'Au 18K',
+    gradient:
+      'radial-gradient(ellipse at 40% 60%, #FFBE52 0%, #D46514 32%, #8B3A00 62%, #4A1E00 100%)',
+    shine:
+      'radial-gradient(circle at 28% 26%, rgba(255,248,228,0.38) 0%, rgba(255,160,40,0.07) 42%, transparent 66%)',
   },
   XAG: {
-    icon: 'bg-slate-400/10 text-slate-500 dark:text-slate-400 ring-1 ring-slate-400/20',
-    glow: 'hover:shadow-slate-400/5 hover:ring-slate-400/20',
-    badge: 'Ag',
+    gradient:
+      'radial-gradient(ellipse at 40% 60%, #D6E4EE 0%, #7A9CB2 32%, #385870 62%, #1A303E 100%)',
+    shine:
+      'radial-gradient(circle at 28% 26%, rgba(255,255,255,0.40) 0%, rgba(210,228,240,0.07) 42%, transparent 66%)',
   },
-};
+} as const;
 
+type MetalSymbol = keyof typeof METAL_THEMES;
+
+/* ─────────────────────────────────────────────────────────────
+   Toggle pill – shows trend direction (matches image exactly)
+   ───────────────────────────────────────────────────────────── */
+function TogglePill({ pct }: { pct: number }) {
+  const isUp   = pct >  0.01;
+  const isDown = pct < -0.01;
+
+  const trackBg = isDown
+    ? 'rgba(239,68,68,0.75)'
+    : isUp
+    ? '#22c55e'
+    : 'rgba(255,255,255,0.18)';
+
+  return (
+    <div
+      className="flex items-center rounded-full px-[3px] transition-colors duration-300"
+      style={{ width: 44, height: 24, backgroundColor: trackBg }}
+    >
+      <div
+        className="h-[18px] w-[18px] rounded-full bg-white shadow-md transition-[margin] duration-300"
+        style={{ marginLeft: isUp ? 'auto' : 0 }}
+      />
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   MetalRateCard — pixel-perfect match to the provided design
+   ───────────────────────────────────────────────────────────── */
+interface MetalCardProps {
+  item:               MetalRate;
+  convertedPrice:     number;
+  convertedGramPrice: number;
+  baseCurrency:       BaseCurrency;
+  index:              number;
+}
+
+export function MetalRateCard({
+  item,
+  convertedPrice,
+  convertedGramPrice,
+  baseCurrency,
+  index,
+}: MetalCardProps) {
+  const theme = METAL_THEMES[item.symbol as MetalSymbol] ?? METAL_THEMES.XAG;
+  const purity = item.karat ? `${item.karat} · ${Math.round((parseInt(item.karat) / 24) * 100)}% Pure` : 'Pure Silver';
+
+  return (
+    <motion.article
+      initial={{ opacity: 0, y: 20 }}
+      animate={{
+        opacity: 1,
+        y: 0,
+        transition: { delay: index * 0.07, duration: 0.45, ease: 'easeOut' },
+      }}
+      whileHover={{ y: -4, scale: 1.02, transition: { duration: 0.2, ease: 'easeOut' } }}
+      /* Card shell */
+      className="relative overflow-hidden"
+      style={{
+        aspectRatio: '8 / 5',
+        borderRadius: 22,
+        backgroundColor: '#0c0c0c',
+        boxShadow: '0 0 0 1.5px rgba(0,0,0,0.85), 0 20px 40px rgba(0,0,0,0.4)',
+      }}
+    >
+      {/* ── Colored top panel with elliptical bottom curve ── */}
+      <div
+        className="pointer-events-none absolute"
+        style={{
+          top: 0,
+          left: '-6%',
+          right: '-6%',
+          height: '64%',
+          background: theme.gradient,
+          /* The elliptical border-radius creates the soft curved divider */
+          borderRadius: '0 0 50% 50% / 0 0 30px 30px',
+        }}
+      >
+        {/* Glossy shine reflection */}
+        <div className="absolute inset-0" style={{ background: theme.shine }} />
+      </div>
+
+      {/* ── Two overlapping semi-transparent circles (chip motif) ── */}
+      <div className="absolute left-4 top-4 flex items-center">
+        <div
+          className="h-9 w-9 rounded-full ring-1 ring-white/25"
+          style={{ background: 'rgba(255,255,255,0.22)', backdropFilter: 'blur(6px)' }}
+        />
+        <div
+          className="h-9 w-9 -ml-3.5 rounded-full ring-1 ring-white/15"
+          style={{ background: 'rgba(255,255,255,0.13)', backdropFilter: 'blur(6px)' }}
+        />
+      </div>
+
+      {/* ── Price — the hero ── */}
+      <div className="absolute right-4 top-3.5 text-right">
+        <p
+          className="font-bold leading-none tracking-tight text-white tabular-nums"
+          style={{ fontSize: 26, textShadow: '0 1px 8px rgba(0,0,0,0.25)' }}
+        >
+          {formatPrice(convertedPrice, baseCurrency)}
+        </p>
+        <p className="mt-[5px] font-semibold uppercase text-white/55" style={{ fontSize: 9, letterSpacing: '0.16em' }}>
+          Per Troy Oz
+        </p>
+      </div>
+
+      {/* ── Dark bottom content ── */}
+      <div
+        className="absolute inset-x-0 bottom-0 flex items-end justify-between"
+        style={{ top: '58%', paddingLeft: 16, paddingRight: 16, paddingBottom: 14 }}
+      >
+        <div>
+          <p className="font-semibold text-white" style={{ fontSize: 14, lineHeight: 1.3 }}>
+            {item.name}
+          </p>
+          <p className="mt-0.5 text-white/38" style={{ fontSize: 11 }}>
+            {purity} &middot;{' '}
+            <span className="text-white/55">{formatPrice(convertedGramPrice, baseCurrency)}/g</span>
+          </p>
+        </div>
+
+        <TogglePill pct={item.changePercent24h} />
+      </div>
+    </motion.article>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Currency flags
+   ───────────────────────────────────────────────────────────── */
 const CURRENCY_FLAGS: Record<string, string> = {
   EUR: '🇪🇺', GBP: '🇬🇧', JPY: '🇯🇵', AUD: '🇦🇺',
   CAD: '🇨🇦', CHF: '🇨🇭', CNY: '🇨🇳', INR: '🇮🇳',
@@ -47,100 +176,14 @@ const CURRENCY_FLAGS: Record<string, string> = {
   USD: '🇺🇸',
 };
 
-function ChangeChip({ pct }: { pct: number }) {
-  const abs = Math.abs(pct);
-  const isFlat = abs < 0.01;
-  const isUp = pct > 0;
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums',
-        isFlat && 'bg-[--border] text-[--fg-subtle]',
-        !isFlat && isUp && 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
-        !isFlat && !isUp && 'bg-red-500/10 text-red-700 dark:text-red-400'
-      )}
-    >
-      {isFlat
-        ? <Minus className="h-2.5 w-2.5" />
-        : isUp
-        ? <TrendingUp className="h-2.5 w-2.5" />
-        : <TrendingDown className="h-2.5 w-2.5" />}
-      {isFlat ? '0.00%' : formatChange(pct, true)}
-    </span>
-  );
-}
-
-interface MetalCardProps {
-  item: MetalRate;
-  convertedPrice: number;
-  convertedGramPrice: number;
-  baseCurrency: BaseCurrency;
-  index: number;
-}
-
-export function MetalRateCard({ item, convertedPrice, convertedGramPrice, baseCurrency, index }: MetalCardProps) {
-  const style = METAL_STYLE[item.symbol] ?? METAL_STYLE['XAG'];
-  const purity = item.karat ? Math.round((parseInt(item.karat) / 24) * 100) : 100;
-
-  return (
-    <motion.article
-      custom={index}
-      variants={cardVariants}
-      initial="hidden"
-      animate="visible"
-      whileHover={{ y: -2, transition: { duration: 0.15 } }}
-      className={cn(
-        'group relative overflow-hidden rounded-xl border border-[--border] bg-[--surface] p-5',
-        'backdrop-blur-xl transition-shadow duration-200',
-        'hover:border-[--border-strong] hover:shadow-xl hover:shadow-black/5 dark:hover:shadow-black/30',
-        style.glow,
-        'ring-1 ring-transparent'
-      )}
-    >
-      {/* Subtle top gradient shine */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent dark:via-white/8" />
-
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-mono text-xs font-bold', style.icon)}>
-            {style.badge}
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-[--fg]">{item.name}</h3>
-            {item.karat && (
-              <p className="text-[11px] text-[--fg-subtle]">
-                {purity}% pure &middot; {item.karat}
-              </p>
-            )}
-          </div>
-        </div>
-        <ChangeChip pct={item.changePercent24h} />
-      </div>
-
-      {/* Hero price */}
-      <div className="mt-5">
-        <p className="text-2xl font-bold tabular-nums tracking-tight text-[--fg]">
-          {formatPrice(convertedPrice, baseCurrency)}
-        </p>
-        <p className="mt-0.5 text-xs text-[--fg-subtle]">per troy ounce</p>
-      </div>
-
-      {/* Secondary row */}
-      <div className="mt-4 flex items-center justify-between border-t border-[--border] pt-3 text-xs text-[--fg-subtle]">
-        <span>Per gram</span>
-        <span className="font-mono tabular-nums text-[--fg-muted]">
-          {formatPrice(convertedGramPrice, baseCurrency)}
-        </span>
-      </div>
-    </motion.article>
-  );
-}
-
+/* ─────────────────────────────────────────────────────────────
+   CurrencyRateCard — dark-glass style matching the theme
+   ───────────────────────────────────────────────────────────── */
 interface CurrencyCardProps {
-  item: CurrencyRate;
+  item:          CurrencyRate;
   convertedRate: number;
-  baseCurrency: BaseCurrency;
-  index: number;
+  baseCurrency:  BaseCurrency;
+  index:         number;
 }
 
 export function CurrencyRateCard({ item, convertedRate, baseCurrency, index }: CurrencyCardProps) {
@@ -148,16 +191,29 @@ export function CurrencyRateCard({ item, convertedRate, baseCurrency, index }: C
 
   return (
     <motion.article
-      custom={index}
-      variants={cardVariants}
-      initial="hidden"
-      animate="visible"
-      whileHover={{ y: -1, transition: { duration: 0.15 } }}
-      className="group rounded-xl border border-[--border] bg-[--surface] p-4 backdrop-blur-xl transition-all duration-200 hover:border-[--border-strong] hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-black/20"
+      initial={{ opacity: 0, y: 14 }}
+      animate={{
+        opacity: 1,
+        y: 0,
+        transition: { delay: index * 0.035, duration: 0.4, ease: 'easeOut' },
+      }}
+      whileHover={{ y: -2, transition: { duration: 0.15 } }}
+      className="relative overflow-hidden rounded-2xl border border-[--border] bg-[--surface]"
+      style={{ padding: '14px 16px' }}
     >
+      {/* Subtle top edge shine */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-px"
+        style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.07) 50%, transparent 100%)' }}
+      />
+
       <div className="flex items-center justify-between gap-3">
+        {/* Flag + name */}
         <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[--bg-subtle] text-base ring-1 ring-[--border]">
+          <span
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-lg"
+            style={{ background: 'rgba(255,255,255,0.05)', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08)' }}
+          >
             {flag}
           </span>
           <div>
@@ -165,12 +221,14 @@ export function CurrencyRateCard({ item, convertedRate, baseCurrency, index }: C
             <p className="max-w-[130px] truncate text-[11px] text-[--fg-subtle]">{item.name}</p>
           </div>
         </div>
+
+        {/* Rate */}
         <div className="text-right">
           <p className="text-base font-bold tabular-nums tracking-tight text-[--fg]">
             {formatRate(convertedRate)}
           </p>
           <p className="text-[10px] text-[--fg-subtle]">
-            1 {baseCurrency} = {formatRate(convertedRate)} {item.symbol}
+            1 {baseCurrency} = {item.symbol}
           </p>
         </div>
       </div>
