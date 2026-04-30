@@ -33,6 +33,18 @@ const METAL_THEMES = {
     shine:
       'radial-gradient(circle at 28% 26%, rgba(255,255,255,0.40) 0%, rgba(210,228,240,0.07) 42%, transparent 66%)',
   },
+  XPT: {
+    gradient:
+      'radial-gradient(ellipse at 40% 60%, #E6F3FF 0%, #7C9CB2 32%, #3A5F7A 62%, #1A2E3F 100%)',
+    shine:
+      'radial-gradient(circle at 28% 26%, rgba(255,255,255,0.45) 0%, rgba(230,243,255,0.08) 42%, transparent 66%)',
+  },
+  XPD: {
+    gradient:
+      'radial-gradient(ellipse at 40% 60%, #F0F8E6 0%, #9CB27C 32%, #5F7A3A 62%, #2E3F1A 100%)',
+    shine:
+      'radial-gradient(circle at 28% 26%, rgba(255,255,255,0.42) 0%, rgba(240,248,230,0.07) 42%, transparent 66%)',
+  },
 } as const;
 
 type MetalSymbol = keyof typeof METAL_THEMES;

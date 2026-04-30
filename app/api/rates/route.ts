@@ -1,133 +1,177 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { MetalRate, CurrencyRate, RatesResponse } from '@/lib/types';
 
-const GOLD_API_KEY = process.env.GOLD_API_KEY;
-const GOLD_API_BASE = 'https://www.goldapi.io/api';
+const GOLD_API_KEY = 'sk_1E80853EB18f159B0020b1323A0BbA099E03b4825d9fda0d';
+const GOLD_API_URL = 'https://gold.g.apised.com/v1/latest?metals=XAU,XAG,XPT,XPD&base_currency=KWD&currencies=EUR,KWD,GBP,USD,PKR,INR,CNY&weight_unit=gram';
+
 const TROY_OZ_TO_GRAM = 31.1035;
 
 const CURRENCY_NAMES: Record<string, string> = {
   EUR: 'Euro',
   GBP: 'British Pound Sterling',
-  JPY: 'Japanese Yen',
-  AUD: 'Australian Dollar',
-  CAD: 'Canadian Dollar',
-  CHF: 'Swiss Franc',
-  CNY: 'Chinese Yuan Renminbi',
+  USD: 'US Dollar',
+  KWD: 'Kuwaiti Dinar',
+  PKR: 'Pakistani Rupee',
   INR: 'Indian Rupee',
-  SGD: 'Singapore Dollar',
-  HKD: 'Hong Kong Dollar',
-  NZD: 'New Zealand Dollar',
-  TRY: 'Turkish Lira',
-  BRL: 'Brazilian Real',
-  KRW: 'South Korean Won',
-  SEK: 'Swedish Krona',
-  NOK: 'Norwegian Krone',
+  CNY: 'Chinese Yuan',
 };
 
-const CURRENCY_LIST = Object.keys(CURRENCY_NAMES).join(',');
-
-async function fetchMetalSpot(symbol: 'XAU' | 'XAG'): Promise<{
+interface MetalPriceData {
   price: number;
-  ch: number;
-  chp: number;
-}> {
-  if (!GOLD_API_KEY) {
-    // Mock data for local development without an API key
-    return symbol === 'XAU'
-      ? { price: 3324.5, ch: 18.3, chp: 0.55 }
-      : { price: 33.12, ch: 0.28, chp: 0.85 };
-  }
+  change: number;
+  change_percentage: number;
+  price_24k?: number;
+  price_22k?: number;
+  price_18k?: number;
+}
 
-  const res = await fetch(`${GOLD_API_BASE}/${symbol}/USD`, {
+interface ApiResponse {
+  status: string;
+  data: {
+    timestamp: number;
+    base_currency: string;
+    metals: string;
+    weight_unit: string;
+    weight_name: string;
+    metal_prices: Record<string, MetalPriceData>;
+    currency_rates: Record<string, number>;
+  };
+}
+
+async function fetchRates(): Promise<ApiResponse> {
+  const res = await fetch(GOLD_API_URL, {
     headers: {
-      'x-access-token': GOLD_API_KEY,
+      'x-api-key': GOLD_API_KEY,
       'Content-Type': 'application/json',
     },
     next: { revalidate: 300 },
   });
 
   if (!res.ok) {
-    throw new Error(`GoldAPI ${symbol} error: ${res.status} ${res.statusText}`);
+    throw new Error(`Gold API error: ${res.status} ${res.statusText}`);
   }
 
   return res.json();
 }
 
-async function fetchExchangeRates(): Promise<Record<string, number>> {
-  const res = await fetch(
-    `https://api.frankfurter.app/latest?from=USD&to=${CURRENCY_LIST}`,
-    { next: { revalidate: 300 } }
-  );
-
-  if (!res.ok) {
-    throw new Error(`Frankfurter API error: ${res.status} ${res.statusText}`);
-  }
-
-  const data = await res.json();
-  return data.rates as Record<string, number>;
-}
-
 export async function GET(_request: NextRequest): Promise<NextResponse<RatesResponse | { error: string }>> {
   try {
-    const [goldData, silverData, fxRates] = await Promise.all([
-      fetchMetalSpot('XAU'),
-      fetchMetalSpot('XAG'),
-      fetchExchangeRates(),
-    ]);
+    const apiData = await fetchRates();
 
-    const goldSpot = goldData.price;
-    const silverSpot = silverData.price;
+    if (apiData.status !== 'success') {
+      throw new Error('API returned non-success status');
+    }
 
-    const metals: MetalRate[] = [
-      {
+    const { metal_prices, currency_rates } = apiData.data;
+
+    // Convert KWD to USD rate
+    const kwdToUsd = currency_rates.USD;
+
+    const metals: MetalRate[] = [];
+
+    // Gold 24K
+    if (metal_prices.XAU) {
+      const goldData = metal_prices.XAU;
+      const pricePerGramUSD = goldData.price / kwdToUsd; // Convert from KWD to USD
+      const pricePerTroyOzUSD = pricePerGramUSD * TROY_OZ_TO_GRAM; // Convert grams to troy oz
+
+      metals.push({
         symbol: 'XAU_24K',
         name: 'Gold 24K',
         karat: '24K',
-        pricePerTroyOz: goldSpot,
-        pricePerGram: goldSpot / TROY_OZ_TO_GRAM,
+        pricePerTroyOz: pricePerTroyOzUSD,
+        pricePerGram: pricePerGramUSD,
         currency: 'USD',
-        change24h: goldData.ch ?? 0,
-        changePercent24h: goldData.chp ?? 0,
+        change24h: goldData.change / kwdToUsd * TROY_OZ_TO_GRAM, // Convert change to USD per troy oz
+        changePercent24h: goldData.change_percentage,
         type: 'metal',
-      },
-      {
+      });
+
+      // Gold 22K
+      metals.push({
         symbol: 'XAU_22K',
         name: 'Gold 22K',
         karat: '22K',
-        pricePerTroyOz: goldSpot * (22 / 24),
-        pricePerGram: (goldSpot / TROY_OZ_TO_GRAM) * (22 / 24),
+        pricePerTroyOz: pricePerTroyOzUSD * (22 / 24),
+        pricePerGram: pricePerGramUSD * (22 / 24),
         currency: 'USD',
-        change24h: (goldData.ch ?? 0) * (22 / 24),
-        changePercent24h: goldData.chp ?? 0,
+        change24h: (goldData.change / kwdToUsd * TROY_OZ_TO_GRAM) * (22 / 24),
+        changePercent24h: goldData.change_percentage,
         type: 'metal',
-      },
-      {
+      });
+
+      // Gold 18K
+      metals.push({
         symbol: 'XAU_18K',
         name: 'Gold 18K',
         karat: '18K',
-        pricePerTroyOz: goldSpot * (18 / 24),
-        pricePerGram: (goldSpot / TROY_OZ_TO_GRAM) * (18 / 24),
+        pricePerTroyOz: pricePerTroyOzUSD * (18 / 24),
+        pricePerGram: pricePerGramUSD * (18 / 24),
         currency: 'USD',
-        change24h: (goldData.ch ?? 0) * (18 / 24),
-        changePercent24h: goldData.chp ?? 0,
+        change24h: (goldData.change / kwdToUsd * TROY_OZ_TO_GRAM) * (18 / 24),
+        changePercent24h: goldData.change_percentage,
         type: 'metal',
-      },
-      {
+      });
+    }
+
+    // Silver
+    if (metal_prices.XAG) {
+      const silverData = metal_prices.XAG;
+      const pricePerGramUSD = silverData.price / kwdToUsd;
+      const pricePerTroyOzUSD = pricePerGramUSD * TROY_OZ_TO_GRAM;
+
+      metals.push({
         symbol: 'XAG',
         name: 'Silver',
-        pricePerTroyOz: silverSpot,
-        pricePerGram: silverSpot / TROY_OZ_TO_GRAM,
+        pricePerTroyOz: pricePerTroyOzUSD,
+        pricePerGram: pricePerGramUSD,
         currency: 'USD',
-        change24h: silverData.ch ?? 0,
-        changePercent24h: silverData.chp ?? 0,
+        change24h: silverData.change / kwdToUsd * TROY_OZ_TO_GRAM,
+        changePercent24h: silverData.change_percentage,
         type: 'metal',
-      },
-    ];
+      });
+    }
 
-    const currencies: CurrencyRate[] = Object.entries(fxRates).map(([code, rate]) => ({
+    // Platinum
+    if (metal_prices.XPT) {
+      const platinumData = metal_prices.XPT;
+      const pricePerGramUSD = platinumData.price / kwdToUsd;
+      const pricePerTroyOzUSD = pricePerGramUSD * TROY_OZ_TO_GRAM;
+
+      metals.push({
+        symbol: 'XPT',
+        name: 'Platinum',
+        pricePerTroyOz: pricePerTroyOzUSD,
+        pricePerGram: pricePerGramUSD,
+        currency: 'USD',
+        change24h: platinumData.change / kwdToUsd * TROY_OZ_TO_GRAM,
+        changePercent24h: platinumData.change_percentage,
+        type: 'metal',
+      });
+    }
+
+    // Palladium
+    if (metal_prices.XPD) {
+      const palladiumData = metal_prices.XPD;
+      const pricePerGramUSD = palladiumData.price / kwdToUsd;
+      const pricePerTroyOzUSD = pricePerGramUSD * TROY_OZ_TO_GRAM;
+
+      metals.push({
+        symbol: 'XPD',
+        name: 'Palladium',
+        pricePerTroyOz: pricePerTroyOzUSD,
+        pricePerGram: pricePerGramUSD,
+        currency: 'USD',
+        change24h: palladiumData.change / kwdToUsd * TROY_OZ_TO_GRAM,
+        changePercent24h: palladiumData.change_percentage,
+        type: 'metal',
+      });
+    }
+
+    const currencies: CurrencyRate[] = Object.entries(currency_rates).map(([code, rate]) => ({
       symbol: code,
       name: CURRENCY_NAMES[code] ?? code,
-      rate,
+      rate: rate / currency_rates.USD, // Convert to USD base
       baseCurrency: 'USD',
       type: 'currency',
     }));
@@ -135,7 +179,7 @@ export async function GET(_request: NextRequest): Promise<NextResponse<RatesResp
     const response: RatesResponse = {
       metals,
       currencies,
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: new Date(apiData.data.timestamp).toISOString(),
       baseCurrency: 'USD',
     };
 
