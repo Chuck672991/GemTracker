@@ -161,23 +161,33 @@ export function Dashboard() {
               />
             </div>
 
-            {/* Unit pills */}
+            {/* Unit pills — height matches dropdowns */}
             <div>
               <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.38)' }}>
                 Unit
               </label>
-              <div className="flex rounded-2xl overflow-hidden" style={{ border: `1px solid ${theme.cardBorder}`, background: 'rgba(0,0,0,0.2)' }}>
+              <div
+                className="flex gap-1 p-0.5 rounded-2xl"
+                style={{
+                  background:          theme.dropBg,
+                  border:              `1px solid ${theme.dropBorder}`,
+                  backdropFilter:      'blur(24px)',
+                  WebkitBackdropFilter:'blur(24px)',
+                  boxShadow:           '0 4px 24px rgba(0,0,0,0.35)',
+                }}
+              >
                 {(['gram', 'tola', 'troyoz'] as UnitType[]).map(u => {
                   const active = u === unit;
                   return (
                     <button
                       key={u}
                       onClick={() => setUnit(u)}
-                      className="px-4 py-2.5 text-xs font-bold transition-all whitespace-nowrap"
+                      className="px-4 py-3.5 rounded-xl text-sm font-semibold transition-all whitespace-nowrap"
                       style={{
                         color:      active ? theme.accentText : 'rgba(255,255,255,0.4)',
                         background: active ? theme.pillActive : 'transparent',
-                        border:     'none',
+                        border:     active ? `1px solid ${theme.pillBorder}` : '1px solid transparent',
+                        transition: 'all 0.2s ease',
                       }}
                     >
                       {UNIT_LABELS[u]}
@@ -249,7 +259,7 @@ export function Dashboard() {
 
         {/* ── Row 3: Overview + News + Insights ── */}
         <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 1fr 320px' }}>
-          <GlobalMarketOverview theme={theme} />
+          <GlobalMarketOverview theme={theme} metals={ratesData?.metals} />
           <MarketNews           theme={theme} />
           <QuickInsights metal={metal} theme={theme} />
         </div>
