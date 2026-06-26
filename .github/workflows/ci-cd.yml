@@ -184,7 +184,7 @@ jobs:
     # The job is gated here until an approver clicks "Approve".
     environment:
       name: production
-      url: http://${{ secrets.EC2_HOST }}
+      url: http://13.233.101.208:3001
 
     steps:
       - name: Download build artifact
