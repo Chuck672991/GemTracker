@@ -202,12 +202,12 @@ jobs:
       - name: Upload build to EC2
         run: |
           rsync -avz --delete dist/ \
-            ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:/var/www/Gemtracker/dist/
+            ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:/GemTracker/dist/
 
       - name: Restart application
         run: |
           ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} \
-            "cd /var/www/Gemtracker && npm run start --if-present || pm2 restart gemtracker || true"
+            "cd /GemTracker && npm run start --if-present || pm2 restart gemtracker || true"
 
       - name: Clean up SSH key
         if: always()
