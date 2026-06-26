@@ -7,7 +7,7 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 
-  /* Map semantic CSS tokens → Tailwind utilities */
+  /* Map k semantic CSS tokens → Tailwind utilities */
   --color-bg:               var(--bg);
   --color-bg-subtle:        var(--bg-subtle);
   --color-surface:          var(--surface);
