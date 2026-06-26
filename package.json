@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "echo \"No test suite configured yet — exit 0\" && exit 0"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.100.5",

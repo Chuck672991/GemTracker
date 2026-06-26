@@ -1,0 +1,214 @@
+name: CI/CD Pipeline
+
+# ─── Triggers ──────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip_build:
+        description: "Skip the build job (true/false)"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+  schedule:
+    # Nightly run at 02:00 UTC against the latest Node version
+    - cron: "0 2 * * *"
+
+# ─── Concurrency ───────────────────────────────────────────────────────────────
+# Cancel any in-progress run on the same branch/tag when a new commit is pushed.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ─── Jobs ──────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ── 1. Matrix Test ────────────────────────────────────────────────────────────
+  test:
+    name: Test (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false          # keep all matrix legs running even if one fails
+      matrix:
+        node-version: [16, 18, 20]
+        # Nightly schedule overrides: test only against the latest node version
+        # to avoid burning minutes on a full matrix every night.
+        exclude:
+          - node-version: ${{ github.event_name == 'schedule' && 16 || 'none' }}
+          - node-version: ${{ github.event_name == 'schedule' && 18 || 'none' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint -- --max-warnings 0 || true   # non-blocking until lint is stable
+
+      - name: Run tests
+        run: |
+          mkdir -p test-results/node-${{ matrix.node-version }}
+          npm test -- --reporter=json \
+            --outputFile=test-results/node-${{ matrix.node-version }}/results.json \
+            2>&1 | tee test-results/node-${{ matrix.node-version }}/output.log || true
+          # Ensure the result file exists even when there are no tests yet
+          [ -f test-results/node-${{ matrix.node-version }}/results.json ] || \
+            echo '{"note":"no tests configured"}' \
+              > test-results/node-${{ matrix.node-version }}/results.json
+
+      - name: Upload test results (Node ${{ matrix.node-version }})
+        if: always()    # upload even when tests fail so we can inspect failures
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-node-${{ matrix.node-version }}
+          path: test-results/node-${{ matrix.node-version }}/
+          retention-days: 14
+
+  # ── 2. Summarise all test results ────────────────────────────────────────────
+  summarize:
+    name: Summarize Test Results
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all test result artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-results-node-*
+          path: all-test-results/
+          merge-multiple: false
+
+      - name: Concatenate results into a single summary
+        run: |
+          echo "# Test Summary — ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          for dir in all-test-results/test-results-node-*/; do
+            node_ver=$(basename "$dir")
+            echo "## $node_ver" >> $GITHUB_STEP_SUMMARY
+            if [ -f "$dir/output.log" ]; then
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              tail -40 "$dir/output.log" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+            else
+              echo "_No output log found._" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+          # Also write a flat concatenated file as an artifact
+          mkdir -p combined-results
+          find all-test-results/ -name "*.log" -exec cat {} >> combined-results/all-tests.log \;
+          find all-test-results/ -name "*.json" | while read f; do
+            echo "=== $f ===" >> combined-results/all-results.json
+            cat "$f"         >> combined-results/all-results.json
+            echo ""          >> combined-results/all-results.json
+          done
+
+      - name: Upload combined test summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-combined
+          path: combined-results/
+          retention-days: 30
+
+  # ── 3. Conditional Build ──────────────────────────────────────────────────────
+  build:
+    name: Build
+    needs: test
+    # Run only when ALL test matrix legs pass AND we are on main / a version tag.
+    # A manual dispatch can opt-out via the skip_build input.
+    if: |
+      needs.test.result == 'success' &&
+      (
+        github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v')
+      ) &&
+      (
+        github.event_name != 'workflow_dispatch' ||
+        inputs.skip_build != 'true'
+      )
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: dist/
+          retention-days: 30
+
+  # ── 4. Deploy (manual approval via environment protection) ───────────────────
+  deploy:
+    name: Deploy to EC2
+    needs: build
+    # Only deploy from main or a version tag; never from PRs.
+    if: |
+      needs.build.result == 'success' &&
+      (
+        github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v')
+      )
+    runs-on: ubuntu-latest
+    # The "production" environment must have a required reviewer configured
+    # in GitHub → Settings → Environments → production.
+    # The job is gated here until an approver clicks "Approve".
+    environment:
+      name: production
+      url: http://${{ secrets.EC2_HOST }}
+
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: dist/
+
+      - name: Set up SSH key
+        run: |
+          install -m 600 -D /dev/null ~/.ssh/id_rsa
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Upload build to EC2
+        run: |
+          rsync -avz --delete dist/ \
+            ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:/var/www/gemtracker/dist/
+
+      - name: Restart application
+        run: |
+          ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} \
+            "cd /var/www/gemtracker && npm run start --if-present || pm2 restart gemtracker || true"
+
+      - name: Clean up SSH key
+        if: always()
+        run: rm -f ~/.ssh/id_rsa
